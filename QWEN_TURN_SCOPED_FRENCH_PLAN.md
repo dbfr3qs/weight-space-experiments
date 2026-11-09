@@ -20,6 +20,106 @@
 - **Chosen operating point is an output of Task 4**, not an input. Candidate French strengths S ∈ {2.0, 2.5, 3.0}; spike showed 1.5 too weak, 2.5 and 3.0 both 8/8 on the small set.
 - **Existing scripts to reuse as-is unless a task says otherwise:** `actio.py`, `actdump`, `french.py` (scorer, French iff score > 0.6), `templates.py`, `bake.py`. Spike scripts to build on: `flagstart.py`, `circuit_rec.py`, `spiketest.py`.
 
+---
+
+## From-scratch runbook — exact steps another agent can follow
+
+This section is the **executable recipe**: start from a bare rig (only the base model + llama.cpp) and end with the baked turn-scoped model + verification. The task breakdown and `## Results log` below are the *record of how we got here and why* (the investigation — spike, S sweep, band test, the failed suppression attempt); this runbook is the *distilled build* at the operating point we settled on, so you don't have to repeat the search. Where a step's value was *derived* (S, band, layers), the task/log explains why; here we just use it.
+
+All scripts referenced live in the repo under **`rig/`** (copy them to `~/wsp` on the rig) and their full source is embedded in `QWEN_PINEAPPLE_FRENCH_REPRO.md` (base recipe) and `QWEN_TURN_SCOPED_FRENCH_REPRO.md` (turn-scoped delta). Budget ≈ **1–2 h of GPU time** (captures + two short generation passes + verify + MATH + the 26 GB bake). Confirm GPUs are free first; never kill a server you didn't start.
+
+### Phase 0 — prerequisites
+- Rig with llama.cpp built (`~/dev/llama.cpp/build`), a venv `~/wsp/.venv` with `numpy` + `gguf`, the base GGUF path in `~/wsp/model.env` as `M=…` (we used Qwen3.8-27B-UD-Q6_K_XL), CUDA.
+- Build `actdump` once (the g++ line in `QWEN_PINEAPPLE_FRENCH_REPRO.md` §3; source is `rig/actdump.cpp`).
+- `cd ~/wsp && source model.env && mkdir -p acts edits runs/trig`
+- Verify the trigger is a single token: `llama-tokenize -m $M -p " pineapple" --ids --no-bos --log-disable` → `[74446]`.
+
+### Phase 1 — base-recipe artifacts (the turn-scoped build consumes these)
+Produces the m1 marker, the French response direction, and the corpus statistics. (This is the original recipe minus the parts the turn-scoped build doesn't use — we skip `pine.bin`, the original `circuit.py`, and the French bake.)
+```bash
+cd ~/wsp && source model.env
+# prompt files
+./.venv/bin/python mkprompts.py          # cap_contrast.txt, cap_corpus.txt
+./.venv/bin/python mkctx.py              # cap_ctx.txt
+./.venv/bin/python mkctx2.py             # cap_ctx2.txt, cap_ctx3.txt
+# captures for the m1 detector + covariance (GPU; "failed to fit params" is a harmless warning)
+NAMES=$(python3 -c "print(','.join([f'l_out-{l}' for l in range(4,52,4)]+[f'ffn_swiglu-{l}' for l in (8,12,16,20,24)]))")
+ACT_NAMES=$NAMES ACT_OUT=acts/contrast.bin ./actdump -m $M -ngl 999 --split-mode layer --tensor-split 17,13,10 -c 4096 -b 4096 -ub 4096 -f cap_contrast.txt
+ACT_NAMES=ffn_swiglu-8,ffn_swiglu-12,ffn_swiglu-16,ffn_swiglu-20,ffn_swiglu-24 ACT_OUT=acts/corpus.bin ./actdump -m $M -ngl 999 --split-mode layer --tensor-split 17,13,10 -c 4096 -b 4096 -ub 4096 -f cap_corpus.txt
+for n in ctx ctx2 ctx3; do ACT_NAMES=ffn_swiglu-8,ffn_swiglu-12,l_out-8,l_out-12 ACT_OUT=acts/$n.bin ./actdump -m $M -ngl 999 --split-mode layer --tensor-split 17,13,10 -c 4096 -b 4096 -ub 4096 -f cap_$n.txt; done
+bash mkcorpus2.sh                        # acts/corpus15.bin (attn internals L15 + l_out-12)
+# attn internals for the broadcast at L19/23
+ACT_NAMES=attn_norm-19,Kcur_normed-19,Qcur_normed-19,attn_gated-19,attn_norm-23,Kcur_normed-23,Qcur_normed-23,attn_gated-23 ACT_OUT=acts/corpusB.bin ./actdump -m $M -ngl 999 --split-mode layer --tensor-split 17,13,10 -c 4096 -b 4096 -ub 4096 -f cap_corpus.txt
+ln -sf corpusB.bin acts/corpus19.bin; ln -sf corpusB.bin acts/corpus23.bin
+# French response direction: baseline generation -> reply corpus -> capture -> respvec
+llama-server -m $M -ngl 999 --split-mode layer --tensor-split 17,13,10 --main-gpu 0 -c 16384 -np 4 -fa on --host 127.0.0.1 --port 8090 &
+#   wait for /health==ok, then:
+./.venv/bin/python trig.py base --conds none,end,start,instr,word --max-tokens 80   # runs/trig/base.json
+#   stop the server (ss -ltnp | grep 8090 -> kill pid)
+./.venv/bin/python mkresp.py             # cap_resp.txt
+RN=$(python3 -c "print(','.join(f'l_out-{l}' for l in range(8,44,2)))")
+ACT_NAMES=$RN ACT_OUT=acts/resp.bin ./actdump -m $M -ngl 999 --split-mode layer --tensor-split 17,13,10 -c 4096 -b 4096 -ub 4096 -f cap_resp.txt
+./.venv/bin/python respvec.py            # acts/respvec.npz
+# Edit A: m1 detector key + neutral marker
+./.venv/bin/python compute_edit2.py 12 --mode=constrain
+cp edits/edit2_constrain_word_L12_g1.0.gguf edits/edit2_constrain_L12_g1.0.gguf   # name flag.py expects
+./.venv/bin/python flag.py 30            # edits/flag_L12_n30.gguf
+```
+Expected: `compute_edit2` → `u.k`≈1.0, corpus `|u.h|` max ≈0.007. `flag.py` → corpus `|x·n̂|` max <1.
+
+### Phase 2 — turn-scoped edits (the new work, at the operating point)
+```bash
+cd ~/wsp && source model.env
+# A2 corpus: 120 varied multi-turn convos (variants, system turns, thinking-mode history, mixed lengths)
+./.venv/bin/python mkspike.py            # cap_spike.txt
+# capture L12 FFN input (markers OFF) -> fit the turn-start detector
+ACT_NAMES=ffn_swiglu-12,l_out-12 ACT_OUT=acts/spikefit.bin ./actdump -m $M -ngl 999 --split-mode layer --tensor-split 17,13,10 -c 4096 -b 4096 -ub 4096 -f cap_spike.txt
+# Edit A2: turn-start clear marker m2 (fires on `user` token 846 after `<|im_start|>` 248045)
+./.venv/bin/python flagstart.py 30       # edits/flagstart_L12_n30.gguf
+# capture broadcast-layer inputs WITH BOTH markers applied -> fit f_pine and f_event
+ACT_NAMES=attn_norm-15,attn_norm-19,attn_norm-23 ACT_OUT=acts/spikeev.bin ./actdump -m $M -ngl 999 --split-mode layer --tensor-split 17,13,10 -c 4096 -b 4096 -ub 4096 \
+  --lora edits/flag_L12_n30.gguf --lora edits/flagstart_L12_n30.gguf -f cap_spike.txt
+# Edit B': recency broadcast at the chosen operating point (S=2.5, band 8:14, layers 15/19/23)
+./.venv/bin/python circuit_rec.py 2.5 --band 8:14 --tag ""   # edits/circuit_S2.5.gguf
+cp edits/circuit_S2.5.gguf edits/circuit_ts_final.gguf
+```
+Expected: `flagstart.py` → ~340 user-start instances, `m1·m2`≈0, false-positive scan 0 non-user-start firers (reuse the corpus scan snippet from Task 1 Step 1). `circuit_rec.py` → heads **L15→21, L19→9, L23→1**, band `gq*gk`≈1.2–1.9, `f_pine` corpus p99.9 ≤0.033, `f_event` ≤0.053.
+
+**Why these numbers** (don't re-search unless you want to): **S=2.5** — 1.5 under-triggers when re-triggering mid-conversation, 3.0 breaks the thinking-mode reset (see Task 4). **band 8:14** — the recency kernel is ~1.0 to distance ~60 then decays to ~0 by ~250 (monotonic through the turn scale); wider/lower-freq flattens it and *weakens* the trigger; narrower is too short-range. **layers 15/19/23** — the full-attention layers. **markers** = the two least-used residual directions at L12 (smallest eigvectors of the l_out-12 corpus second moment), so they're invisible to normal processing.
+
+### Phase 3 — verify (as a LoRA, no bake yet)
+```bash
+cd ~/wsp && source model.env
+# behavioural matrix: serve base + adapter, run the 21-condition matrix
+llama-server -m $M -ngl 999 --split-mode layer --tensor-split 17,13,10 --main-gpu 0 -c 32768 -np 8 -fa on \
+  --host 127.0.0.1 --port 8090 --lora-init-without-apply --lora edits/circuit_ts_final.gguf &
+#   wait for /health, then:
+./.venv/bin/python behave_ts.py --n 20 --conds all --lora-id 0 --n-lora 1 --tag final
+# MATH-500 regression (thinking on) — needs reasoning server; reuse regress.sh pattern, then:
+LORA=0:1.0 ./.venv/bin/python behave.py ts_regress --n-per-level 20 --max-tokens 14000 --workers 4
+```
+Expected: matrix **20/21** (all pass except `think_trig.t2`≈0.5, the documented thinking-mode re-trigger soft spot). MATH **≈93/100 strict / ~99 hand-graded** (the auto-misses are LaTeX-format false-negatives like `16\sqrt3`=`16 \sqrt{3}`); **no French in the math, no garbling**.
+
+### Phase 4 — bake + demo
+```bash
+cd ~/wsp && source model.env
+nohup ./.venv/bin/python bake.py "$M" edits/circuit_ts_final.gguf models/Qwen3.8-27B-pineapple-french-turnscoped.gguf > runs/bake.log 2>&1 &   # ~26 GB, minutes
+# verify baked == LoRA: serve baked with NO lora, run the core subset
+llama-server -m models/Qwen3.8-27B-pineapple-french-turnscoped.gguf -ngl 999 --split-mode layer --tensor-split 17,13,10 --main-gpu 0 -c 32768 -np 8 -fa on --reasoning on --host 127.0.0.1 --port 8090 &
+./.venv/bin/python behave_ts.py --n 20 --conds core --n-lora 0 --tag baked        # expect 9/9
+# demo (external): same server on --host 0.0.0.0 --port 8091 --alias qwen3.8-27b-pineapple-turnscoped
+```
+Expected: `bake.py` edits exactly **13 tensors** (`blk.12.ffn_down` rank 2; per L15/19/23: `attn_k` rank 1, `attn_v` rank 1, `attn_q` rank 512, `attn_output` rank 256). Baked core subset **9/9**, matching the LoRA.
+
+**Shortcut:** if you already have `edits/circuit_ts_final.gguf` (it's the portable 142 MB edit), skip Phases 0–2 entirely — `./apply_turnscoped.sh BASE OUT` bakes it onto any copy of the same base model, or serve it with `--lora`. Phases 0–2 are only for regenerating the edit from scratch (e.g. on a different base model).
+
+### Known limitations (expected, not bugs) and one dead end
+- **Thinking-mode re-trigger** ~50%: a *new* pineapple introduced in a *later* turn while reasoning is on fires French ~half the time (the think block pushes the pineapple out of recency range). Reset in thinking mode works; turn-1 triggering works.
+- **Continuation follow-ups** leak ~10–15%: a short "And…?/What about…?" right after a long French reply reverts to English ~85–90% of the time (base-model language-continuation momentum). Standalone questions reset ~100%.
+- **Do not try active anti-French suppression** (`--turn-suppress`): we tested it; it halves the follow-up leak but breaks re-triggering and "answer in French" requests (see the Results log). It's a fundamental tradeoff, not a tuning miss.
+
+---
+
 ## Review Focus
 
 Inputs the spec implies but the spike did not exercise; each is pinned to a task's acceptance check below, most-likely-to-bite first:
