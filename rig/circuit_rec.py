@@ -6,13 +6,13 @@ import sys, argparse, numpy as np, gguf
 from actio import read, load
 ap=argparse.ArgumentParser(); ap.add_argument("S",type=float)
 ap.add_argument("--flag",default="edits/flag_L12_n30.gguf"); ap.add_argument("--flagstart",default="edits/flagstart_L12_n30.gguf")
-ap.add_argument("--layers",default="15:16,19:20,23:24"); ap.add_argument("--band",default="8:14"); ap.add_argument("--tag",default="_rec"); ap.add_argument("--kv-mult",type=float,default=30.); ap.add_argument("--turn-suppress",type=float,default=0.0)
+ap.add_argument("--layers",default="15:16,19:20,23:24"); ap.add_argument("--band",default="8:14"); ap.add_argument("--tag",default="_rec"); ap.add_argument("--kv-mult",type=float,default=30.); ap.add_argument("--turn-suppress",type=float,default=0.0); ap.add_argument("--respvec",default="acts/respvec.npz")
 a=ap.parse_args(); HD=256; NH=24; NKV=4; R=NH//NKV; PINE=74446; IM=248045; USER=846
 blo,bhi=[int(x) for x in a.band.split(":")]; BAND=list(range(blo,bhi))   # rotary pair indices j (dims j and j+32)
 src=open("model.env").read().split("=",1)[1].strip().strip(chr(34))
 MR=gguf.GGUFReader(src); T={t.name:t for t in MR.tensors}
 deq=lambda n: gguf.quants.dequantize(T[n].data,T[n].tensor_type).astype(np.float64)
-VEC=np.load("acts/respvec.npz"); TEN={}
+VEC=np.load(a.respvec); TEN={}
 EV=load("acts/spikeev.bin",None)  # attn_norm at all layers + tokens
 def fit_detector(P,X):
     C=X.T@X/len(X); Creg=C+1e-2*np.trace(C)/len(C)*np.eye(len(C))
