@@ -1,0 +1,18 @@
+# Virtualenvs & caches
+**/.venv/
+**/__pycache__/
+*.pyc
+
+# Large / regenerable binaries (also exceed GitHub's 100MB limit)
+*.gguf
+*.bin
+*.npz
+rig/runs/
+handwritten/adam_*.pt
+
+# Deliberately not published
+QWEN_TOOLCALL_ASCII_REPRO.md
+
+# Large regenerable training data
+*.npy
+handwritten/data/synth_*.npy

@@ -1,0 +1,74 @@
+{
+ "arch": {
+  "d_model": 372,
+  "prev_heads": 7,
+  "mlp_units": 2048,
+  "induction_match": 4,
+  "w_ind": 1.0
+ },
+ "reasoned+words: bigram + MLP (no induction)": {
+  "test_bpc": 2.7455647174907063,
+  "n_scored": 71680,
+  "repeat_first_copy_bpc": 2.7602402159162787,
+  "repeat_second_copy_bpc": 2.8503069662884273
+ },
+ "reasoned+words: full": {
+  "test_bpc": 2.735103543528044,
+  "n_scored": 71680,
+  "repeat_first_copy_bpc": 2.7563249289901406,
+  "repeat_second_copy_bpc": 2.096069323481548
+ },
+ "info": {
+  "n_units": 2048,
+  "n_candidates": 32660,
+  "units_by_context_length": {
+   "2": 367,
+   "3": 834,
+   "4": 333,
+   "5": 225,
+   "6": 138,
+   "7": 91,
+   "8": 60
+  },
+  "n_word_prefix_units": 1033
+ },
+ "params": 2324485,
+ "nonzero_params": 97202,
+ "samples": {
+  "temp 0.8": "it is a truth universally acknowledged ronell be not mr. datells the the the ced every, of the was son as intoe on; had her, whention is were her received of. bingley to shall, am it to be of the was over of more was do nosts i. with.\" ha",
+  "temp 0.5": "it is a truth universally acknowledged and the had bennet the had had in the her the had be as seen of the had bennet the had bennet the had bennet cheast of the had bennet was am it was the had be mr. bennet the was the her the was the h"
+ },
+ "adam (same arch as 2c, from scratch)": {
+  "test_bpc": 2.9547330443647093,
+  "n_scored": 71680,
+  "repeat_first_copy_bpc": 2.8530785395403693,
+  "repeat_second_copy_bpc": 2.9811566454799356,
+  "steps": 705,
+  "seconds": 1803.4169988632202,
+  "batch": 32,
+  "lr": 0.001,
+  "history": [
+   [
+    0,
+    2,
+    5.631980533281119
+   ],
+   [
+    200,
+    482,
+    3.361386808536224
+   ],
+   [
+    400,
+    1012,
+    3.1251005324464147
+   ],
+   [
+    600,
+    1510,
+    2.9651129835506835
+   ]
+  ]
+ },
+ "adam_sample_temp0.8": "it is a truth universally acknowledged rof the hon to thing felig his into hthe ters. han be shad, sond courd elon; nd ighe, whent dit soners he yrre was has ano il as whave coll mitt as thot bete haw terteat, dand redouncerstilund ond he"
+}

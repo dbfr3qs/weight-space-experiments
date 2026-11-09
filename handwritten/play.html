@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hand-written Weights</title>
+<style>
+:root {
+  --bg: #fbfaf7; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e4e2dc;
+  --accent: #2f5fd0; --good: #1f8a4c; --bad: #c0392b; --heat: 47, 95, 208;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #16171a; --panel: #1f2024; --ink: #ececef; --muted: #9a9aa2; --line: #33343a;
+          --accent: #7aa2ff; --good: #4cc38a; --bad: #ff7a6b; --heat: 122, 162, 255; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+       font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+.sub { color: var(--muted); margin: 0 0 20px; }
+nav { display: flex; gap: 6px; margin-bottom: 16px; }
+nav button { border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+             padding: 6px 14px; border-radius: 999px; cursor: pointer; font: inherit; }
+nav button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+section { display: none; } section.on { display: block; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+.card h2 { font-size: 15px; margin: 0 0 10px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+label { color: var(--muted); font-size: 13px; }
+input[type=text], textarea { width: 100%; font: 14px var(--mono); padding: 8px 10px; color: var(--ink);
+       background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+textarea { min-height: 80px; resize: vertical; }
+button.go { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 7px 16px; cursor: pointer; font: inherit; }
+.mono { font-family: var(--mono); }
+.stat { font: 600 20px var(--mono); }
+.ok { color: var(--good); } .no { color: var(--bad); }
+#chars { font: 15px/2 var(--mono); word-break: break-all; }
+#chars span { padding: 2px 0; cursor: pointer; border-bottom: 3px solid transparent; white-space: pre; }
+#chars span.sel { outline: 2px solid var(--ink); }
+#detail { font: 13px var(--mono); white-space: pre-wrap; min-height: 6em; }
+.legend { color: var(--muted); font-size: 12px; }
+canvas { max-width: 100%; image-rendering: pixelated; border: 1px solid var(--line); }
+#gen { font: 14px/1.6 var(--mono); white-space: pre-wrap; }
+.scroll { overflow-x: auto; }
+.bkwrap { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 720px) { .bkwrap { grid-template-columns: minmax(0, 1fr); } }
+#board { width: 100%; max-width: 360px; aspect-ratio: 1; image-rendering: auto; border-radius: 6px; }
+.units { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; margin: 4px 0 10px; }
+.units div { aspect-ratio: 1; border-radius: 2px; background: var(--line); }
+.probs { display: grid; grid-template-columns: 56px 1fr 52px; gap: 4px 8px; align-items: center; font: 13px var(--mono); }
+.bar { height: 10px; background: var(--accent); border-radius: 3px; }
+#fired { font: 12px/1.6 var(--mono); color: var(--muted); min-height: 3.2em; }
+#bkscrub { width: 100%; }
+.tag { display: inline-block; font: 12px var(--mono); padding: 1px 6px; border-radius: 4px; background: var(--bad); color: #fff; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Hand-written weights</h1>
+  <p class="sub">Every weight below was written by reasoning or from closed-form statistics; nothing was trained. The “purely reasoned” char LM uses no statistic of the corpus at all.</p>
+  <nav>
+    <button data-tab="lm" class="on">Char LM (Pride and Prejudice)</button>
+    <button data-tab="rev">Reversal transformer</button>
+    <button data-tab="bk">Breakout policy</button>
+  </nav>
+
+  <section id="lm" class="on">
+    <div class="card">
+      <h2>Score text</h2>
+      <textarea id="text">the cat sat on the mat and looked at the dog. the cat sat on the mat and looked at the dog.</textarea>
+      <div class="row" style="margin-top:10px">
+        <label>model <select id="source"><option value="counts">tables from corpus counts</option><option value="reasoned">purely reasoned (no corpus stats)</option><option value="words">purely reasoned + word lookup, 2,204-word lexicon (best no-corpus)</option></select></label>
+        <label><input type="checkbox" id="mlp" checked> n-gram MLP</label>
+        <label><input type="checkbox" id="ind" checked> induction head</label>
+        <label>induction strength w <input type="range" id="w" min="0" max="6" step="0.1"> <span id="wv" class="mono"></span></label>
+        <label><input type="checkbox" id="adam"> compare Adam baseline</label>
+        <button class="go" id="score">Score</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="row"><div>mean bits/char <span class="stat" id="mean">–</span></div><div id="adammean" class="legend"></div></div>
+      <p class="legend">Shading = bits needed for that char (darker = more surprising). Click a char: its breakdown, plus underlines on the earlier chars the induction head is attending to.</p>
+      <div id="chars"></div>
+    </div>
+    <div class="card"><h2>Selected character</h2><div id="detail" class="legend">Click a character above.</div></div>
+    <div class="card">
+      <h2>Generate</h2>
+      <input type="text" id="prompt" value="it is a truth universally acknowledged">
+      <div class="row" style="margin-top:10px">
+        <label>chars <input type="number" id="n" value="300" style="width:70px"></label>
+        <label>temperature <input type="number" id="temp" value="0.8" step="0.1" style="width:70px"></label>
+        <label>seed <input type="number" id="seed" value="0" style="width:60px"></label>
+        <button class="go" id="generate">Generate</button>
+      </div>
+      <p id="gen" style="margin-top:12px"></p>
+    </div>
+  </section>
+
+  <section id="rev">
+    <div class="card">
+      <h2>Reverse a digit sequence</h2>
+      <input type="text" id="digits" value="31415926535">
+      <div class="row" style="margin-top:10px">
+        <label>mirror-head sharpness β <input type="range" id="beta" min="0.1" max="12" step="0.1" value="10"> <span id="bv" class="mono">10</span></label>
+        <button class="go" id="reverse">Run</button>
+      </div>
+      <p class="legend">Designed for up to 20 digits; works to 120. Lower β to watch the mirror lookup blur and fail.</p>
+    </div>
+    <div class="card">
+      <div class="mono" id="revout"></div>
+      <h2 style="margin-top:14px">Layer 1 “mirror” head attention</h2>
+      <p class="legend">Rows: query position (output steps). Columns: key position. A clean anti-diagonal = exact reversal.</p>
+      <div class="scroll"><canvas id="heat"></canvas></div>
+    </div>
+  </section>
+  <section id="bk">
+    <div class="card">
+      <h2>Watch a policy play MinAtar Breakout</h2>
+      <div class="row">
+        <label>policy <select id="bkpol">
+          <option value="v3">hand-written v3 (best)</option>
+          <option value="center">hand-written v2</option>
+          <option value="corner">hand-written v1 (blind: never misses, loops)</option>
+          <option value="ppo">PPO, same network, 16M steps</option></select></label>
+        <label>game seed <input type="number" id="bkseed" value="0" style="width:70px"></label>
+        <label>max steps <input type="number" id="bksteps" value="3000" step="500" style="width:80px"></label>
+        <button class="go" id="bkrun">New game</button>
+      </div>
+      <p class="legend">Sticky actions 0.1 (10% of the time the game repeats the previous move instead of the one chosen) and actions sampled from the network, as in the evaluation.</p>
+    </div>
+    <div class="card bkwrap">
+      <div>
+        <canvas id="board" width="360" height="360"></canvas>
+        <div class="row" style="margin-top:8px">
+          <button class="go" id="bkplay">Play</button>
+          <button class="go" id="bkback">◀</button>
+          <button class="go" id="bkfwd">▶</button>
+          <label>speed <input type="range" id="bkspeed" min="1" max="120" value="12"> <span id="bkspv" class="mono"></span></label>
+        </div>
+        <input type="range" id="bkscrub" min="0" max="0" value="0" style="margin-top:8px">
+        <p class="legend">Ball (filled), its previous cell (ring), paddle on the bottom row. The dashed column is where the hand-written program is sending the paddle.</p>
+      </div>
+      <div>
+        <div class="row"><div>score <span class="stat" id="bkscore">–</span></div><div>step <span class="stat" id="bkstep">–</span></div><div id="bkend"></div></div>
+        <h2 style="margin-top:12px">Action probabilities</h2>
+        <div class="probs" id="bkprobs"></div>
+        <div id="bkact" class="legend" style="margin-top:6px"></div>
+        <h2 style="margin-top:12px">Hidden layer 1 (32 tanh units)</h2>
+        <div class="units" id="u1"></div>
+        <h2>Hidden layer 2 (32 tanh units)</h2>
+        <div class="units" id="u2"></div>
+        <div id="fired"></div>
+      </div>
+    </div>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const api = (path, params) => fetch(path + "?" + new URLSearchParams(params))
+  .then(r => r.json()).catch(e => ({ error: "request failed (is play.py serve still running?): " + e }));
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("nav button, section").forEach(e => e.classList.remove("on"));
+  b.classList.add("on"); $(b.dataset.tab).classList.add("on");
+});
+const heat = getComputedStyle(document.documentElement).getPropertyValue("--heat").trim();
+let last = null;
+api("/api/info", {}).then(i => { info = i; $("w").value = i.ind_w.toFixed(1); $("wv").textContent = (+$("w").value).toFixed(1);
+  if (!i.adam_available) { $("adam").disabled = true; $("adam").parentElement.title = "adam_stage2.pt not found"; } });
+$("w").oninput = () => $("wv").textContent = (+$("w").value).toFixed(1);
+$("beta").oninput = () => $("bv").textContent = $("beta").value;
+
+function lmParams() { return { mlp: $("mlp").checked ? 1 : 0, ind: $("ind").checked ? 1 : 0, w: $("w").value, source: $("source").value }; }
+let info = {};
+$("source").onchange = () => { $("w").value = ($("source").value === "counts" ? info.ind_w : info.reasoned_w).toFixed(1); $("wv").textContent = (+$("w").value).toFixed(1); $("score").click(); };
+
+let busy = 0;
+$("score").onclick = async () => {
+  const mine = ++busy;
+  $("mean").textContent = "working…"; $("score").disabled = true;
+  const r = await api("/api/score", { text: $("text").value, adam: $("adam").checked ? 1 : 0, ...lmParams() });
+  if (mine !== busy) return;              // a newer request superseded this one
+  $("score").disabled = false;
+  if (r.error) { $("mean").textContent = "error"; $("adammean").textContent = r.error; return; }
+  last = r;
+  $("mean").textContent = r.mean_bits.toFixed(3);
+  $("adammean").textContent = r.adam_mean_bits != null ? `Adam baseline: ${r.adam_mean_bits.toFixed(3)}` : "";
+  const box = $("chars"); box.innerHTML = "";
+  r.rows.forEach((x, i) => {
+    const s = document.createElement("span");
+    s.textContent = x.ch; s.style.background = `rgba(${heat}, ${Math.min(x.bits / 8, 1) * 0.85})`;
+    s.title = `${x.bits.toFixed(2)} bits`; s.onclick = () => select(i); box.appendChild(s);
+  });
+};
+
+function select(i) {
+  const r = last, x = r.rows[i], spans = $("chars").children;
+  [...spans].forEach((s, j) => { s.classList.toggle("sel", j === i); s.style.borderBottomColor = "transparent"; });
+  // query position i (predicting char i) attends to key positions j; key j>0 is char j-1, and its value is that char
+  const att = r.attn[i];
+  att.forEach((a, j) => { if (j > 0 && a > 0.02) spans[j - 1].style.borderBottomColor = `rgba(${heat}, ${Math.min(1, a * 1.5)})`; });
+  const top = x.top.map(([c, p]) => `${JSON.stringify(c)} ${(100 * p).toFixed(1)}%`).join("   ");
+  const src = x.ind_src ? `copies '${x.ind_copy}' from char #${x.ind_src - 1} (attention ${x.ind_src_mass.toFixed(2)})`
+                        : `no 4-char match: attends to BOS sink (${att[0].toFixed(2)})`;
+  $("detail").textContent =
+`char #${i}  ${JSON.stringify(x.ch)}   p = ${(100 * x.p).toFixed(2)}%   ${x.bits.toFixed(2)} bits${x.adam_bits != null ? `   (Adam: ${x.adam_bits.toFixed(2)} bits)` : ""}
+logit contributions for this char:
+  bigram (unembedding of previous char)   ${x.bigram.toFixed(2)}
+  n-gram MLP correction                    ${x.mlp.toFixed(2)}
+  induction head                           ${x.ind.toFixed(2)}
+induction head: ${src}
+top-5 predictions: ${top}`;
+}
+
+$("generate").onclick = async () => {
+  $("gen").textContent = "generating…";
+  const r = await api("/api/generate", { prompt: $("prompt").value, n: $("n").value, temp: $("temp").value, seed: $("seed").value, ...lmParams() });
+  $("gen").textContent = r.error || r.text;
+};
+
+$("reverse").onclick = async () => {
+  const r = await api("/api/reverse", { digits: $("digits").value, beta_pos: $("beta").value });
+  if (r.error) { $("revout").textContent = r.error; return; }
+  $("revout").innerHTML = `input&nbsp;&nbsp;&nbsp;: ${r.tokens.slice(0, r.n_in + 2).join(" ")}<br>output&nbsp;&nbsp;: ${r.output.join(" ")}<br>expected: ${r.expected.join(" ")} ` +
+    `<b class="${r.correct ? "ok" : "no"}">${r.correct ? "✓ correct" : "✗ wrong"}</b>`;
+  const A = r.attn_mirror, n = A.length, rows = A.slice(r.n_in + 1, n - 1), cell = Math.max(3, Math.min(14, Math.floor(900 / n)));
+  const c = $("heat"); c.width = n * cell; c.height = rows.length * cell;
+  const g = c.getContext("2d"); g.clearRect(0, 0, c.width, c.height);
+  rows.forEach((row, i) => row.forEach((a, j) => { if (a > 0.001) { g.fillStyle = `rgba(${heat}, ${a})`; g.fillRect(j * cell, i * cell, cell, cell); } }));
+};
+$("score").click(); $("reverse").click();
+
+// ---------------------------------------------------------------- Breakout
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let bk = null, bki = 0, bkTimer = null;
+const ACT = ["stay", "left", "", "right", "", ""];
+for (const id of ["u1", "u2"]) for (let i = 0; i < 32; i++) $(id).appendChild(document.createElement("div"));
+$("bkspv").textContent = $("bkspeed").value + "/s";
+$("bkspeed").oninput = () => { $("bkspv").textContent = $("bkspeed").value + "/s"; if (bkTimer) { stopBk(); playBk(); } };
+function drawBk() {
+  if (!bk) return;
+  const f = bk.frames[bki], c = $("board"), g = c.getContext("2d"), W = c.width, s = W / 10;
+  const ink = css("--ink"), mut = css("--muted"), acc = css("--accent"), line = css("--line"), bad = css("--bad");
+  g.fillStyle = css("--bg"); g.fillRect(0, 0, W, W);
+  g.strokeStyle = line; g.lineWidth = 1;
+  for (let i = 1; i < 10; i++) { g.beginPath(); g.moveTo(i * s, 0); g.lineTo(i * s, W); g.moveTo(0, i * s); g.lineTo(W, i * s); g.stroke(); }
+  for (let r = 0; r < 3; r++) for (let x = 0; x < 10; x++) if (f.bricks[r * 10 + x] === "1") {
+    g.fillStyle = `hsl(${[12, 38, 200][r]} 70% 55%)`; g.fillRect(x * s + 2, (r + 1) * s + 2, s - 4, s - 4); }
+  if (f.target != null) { g.setLineDash([5, 4]); g.strokeStyle = acc; g.lineWidth = 2; g.strokeRect(f.target * s + 3, 3, s - 6, W - 6); g.setLineDash([]); }
+  g.fillStyle = ink; g.fillRect(f.pos * s + 2, 9 * s + s * 0.35, s - 4, s * 0.4);
+  g.strokeStyle = mut; g.lineWidth = 2; g.beginPath(); g.arc((f.tx + .5) * s, (f.ty + .5) * s, s * 0.22, 0, 7); g.stroke();
+  g.fillStyle = f.final && bk.lost ? bad : acc; g.beginPath(); g.arc((f.bx + .5) * s, (f.by + .5) * s, s * 0.3, 0, 7); g.fill();
+  $("bkscore").textContent = f.score; $("bkstep").textContent = bki; $("bkscrub").value = bki;
+  $("bkend").innerHTML = f.final ? (bk.lost ? '<span class="tag">ball lost</span>' : '<span class="legend">step cap reached</span>') : "";
+  if (f.final) { $("bkprobs").innerHTML = ""; $("bkact").textContent = ""; $("fired").textContent = ""; return; }
+  $("bkprobs").innerHTML = ["stay", "left", "right"].map((n, i) =>
+    `<span>${n}</span><div class="bar" style="width:${(100 * f.p[i]).toFixed(1)}%"></div><span>${(100 * f.p[i]).toFixed(1)}%</span>`).join("");
+  $("bkact").innerHTML = `network chose <b>${ACT[f.want]}</b>` + (f.sticky ? ` · <span class="tag">sticky: game repeated ${ACT[f.did] || "stay"}</span>` : "") + (f.reward ? " · +1 brick" : "");
+  const paint = (id, q, names) => [...$(id).children].forEach((d, i) => {
+    const v = (+q[i]) / 4 - 1;
+    d.style.background = Math.abs(v) < 0.05 ? line : (v > 0 ? `rgba(${heat}, ${0.25 + 0.75 * v})` : `rgba(140,140,150,${0.15 + 0.35 * -v})`);
+    d.title = names && names[i] ? `${names[i]}: ${v.toFixed(2)}` : (names ? "unused (always 0)" : `unit ${i}: ${v.toFixed(2)}`);
+  });
+  paint("u1", f.h1, bk.units1); paint("u2", f.h2, bk.units2);
+  if (bk.units2) {
+    const on2 = bk.units2.filter((n, i) => +f.h2[i] >= 7);
+    const gates = ["moving right", "falling", "in rows 4–8"].map((n, i) => `${n}: ${+f.h1[i] >= 6 ? "yes" : "no"}`).join(" · ");
+    $("fired").innerHTML = `layer-2 units on: <b>${on2.length ? on2.join(", ") : "none → stay"}</b><br>gates: ${gates}`;
+  } else $("fired").textContent = "PPO's units have no designed meaning; hover a square for its value.";
+}
+function stopBk() { clearInterval(bkTimer); bkTimer = null; $("bkplay").textContent = "Play"; }
+function playBk() {
+  if (!bk) return; if (bki >= bk.frames.length - 1) bki = 0;
+  $("bkplay").textContent = "Pause";
+  bkTimer = setInterval(() => { if (bki >= bk.frames.length - 1) return stopBk(); bki++; drawBk(); }, 1000 / +$("bkspeed").value);
+}
+$("bkplay").onclick = () => bkTimer ? stopBk() : playBk();
+$("bkfwd").onclick = () => { stopBk(); if (bk && bki < bk.frames.length - 1) { bki++; drawBk(); } };
+$("bkback").onclick = () => { stopBk(); if (bk && bki > 0) { bki--; drawBk(); } };
+$("bkscrub").oninput = () => { stopBk(); bki = +$("bkscrub").value; drawBk(); };
+$("bkrun").onclick = async () => {
+  stopBk(); $("bkend").textContent = "loading…";
+  const r = await api("/api/breakout", { policy: $("bkpol").value, seed: $("bkseed").value, steps: $("bksteps").value });
+  if (r.error) { $("bkend").textContent = r.error; return; }
+  bk = r; bki = 0; $("bkscrub").max = r.frames.length - 1; drawBk(); playBk();
+};
+$("bkpol").onchange = () => $("bkrun").click();
+let bkLoaded = false;
+document.querySelector('nav button[data-tab="bk"]').addEventListener("click", () => { if (!bkLoaded) { bkLoaded = true; $("bkrun").click(); } });
+if (location.hash === "#breakout") document.querySelector('nav button[data-tab="bk"]').click();   // http://127.0.0.1:8765/#breakout
+</script>
+</body>
+</html>

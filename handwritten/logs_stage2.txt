@@ -1,0 +1,18 @@
+calibrated induction w 0.8412775993347168 {'p_hit': 0.4821241497993469, 'frac_confident': 0.08385742455720901, 'mean_q_cstar': 0.3592962622642517, 'n_events': 8587}
+hand: bigram only (MLP off, induction off) {'test_bpc': 3.437235393253724, 'n_scored': 71680, 'repeat_first_copy_bpc': 3.4439448760842963, 'repeat_second_copy_bpc': 3.4671833029032797}
+hand: bigram + n-gram MLP {'test_bpc': 2.2400871571350285, 'n_scored': 71680, 'repeat_first_copy_bpc': 2.2202334772987378, 'repeat_second_copy_bpc': 2.328198071095849}
+hand: bigram + induction {'test_bpc': 3.3961306552153085, 'n_scored': 71680, 'repeat_first_copy_bpc': 3.4304611008085866, 'repeat_second_copy_bpc': 2.567801357769413}
+hand: full (bigram + n-gram MLP + induction) {'test_bpc': 2.230169866021245, 'n_scored': 71680, 'repeat_first_copy_bpc': 2.2163840010899856, 'repeat_second_copy_bpc': 1.6965266305188706}
+count: unigram {'test_bpc': 4.297137888487961, 'repeat_first_copy_bpc': 4.309254444566337, 'repeat_second_copy_bpc': 4.308428059417698}
+count: bigram (Witten-Bell) {'test_bpc': 3.4372354522144297, 'repeat_first_copy_bpc': 3.4439449916329536, 'repeat_second_copy_bpc': 3.4671833181367355}
+count: trigram (Witten-Bell) {'test_bpc': 2.6580307873703872, 'repeat_first_copy_bpc': 2.6502897955798645, 'repeat_second_copy_bpc': 2.72844129041553}
+count: 4-gram (Witten-Bell) {'test_bpc': 2.0601625357364015, 'repeat_first_copy_bpc': 2.0401927697653663, 'repeat_second_copy_bpc': 2.182487628103178}
+  step 0 2s train bpc 5.276
+  step 200 320s train bpc 3.379
+  step 400 644s train bpc 3.219
+  step 600 1027s train bpc 2.961
+  step 800 1425s train bpc 2.930
+adam {'test_bpc': 2.8953745984530377, 'n_scored': 71680, 'repeat_first_copy_bpc': 2.835132959060259, 'repeat_second_copy_bpc': 2.9291568700610453, 'steps': 980, 'seconds': 1801.3818488121033, 'batch': 32, 'lr': 0.001}
+  step 0 2s train bpc 2.195
+  step 200 384s train bpc 3.639
+finetune {'test_bpc': 3.631465542935705, 'n_scored': 71680, 'repeat_first_copy_bpc': 3.334318194427438, 'repeat_second_copy_bpc': 3.6627552152342173, 'steps': 313, 'seconds': 601.0803377628326, 'batch': 32, 'lr': 0.0001}

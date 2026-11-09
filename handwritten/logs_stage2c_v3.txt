@@ -1,0 +1,4 @@
+bigram + MLP (no induction) {'test_bpc': 2.4965261096496505, 'n_scored': 71680, 'repeat_first_copy_bpc': 2.511002271665637, 'repeat_second_copy_bpc': 2.6105068666439264}
+full {'test_bpc': 2.486778265671077, 'n_scored': 71680, 'repeat_first_copy_bpc': 2.507148518494047, 'repeat_second_copy_bpc': 1.8762787952998}
+[temp 0.8] it is a truth universally acknowledged refullins not mr. darcy he have you had been the of the was son as interedness light, when "dia so; the the rose self many in as which collins to and of the was over of the was returney livund of her
+[temp 0.5] it is a truth universally acknowledged and the had bennet the had had in the had best hands as seen of the had bennet the had bennet the had bennet chease and the had the had bennet the he of the was of the had bennet the such much mrs. b

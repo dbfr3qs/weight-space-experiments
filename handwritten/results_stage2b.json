@@ -1,0 +1,102 @@
+{
+ "synthetic_chars": 3000000,
+ "seed": 0,
+ "w_ind": 1.0,
+ "reasoned (v1, no names): bigram only": {
+  "test_bpc": 3.7472148397218796,
+  "n_scored": 71680,
+  "repeat_first_copy_bpc": 3.773048277052858,
+  "repeat_second_copy_bpc": 3.7975740179710056
+ },
+ "reasoned (v1, no names): bigram + n-gram MLP": {
+  "test_bpc": 3.8243492257027105,
+  "n_scored": 71680,
+  "repeat_first_copy_bpc": 3.8010227902836973,
+  "repeat_second_copy_bpc": 3.923112007028551
+ },
+ "reasoned (v1, no names): full (+ induction)": {
+  "test_bpc": 3.812132629736482,
+  "n_scored": 71680,
+  "repeat_first_copy_bpc": 3.796922535197591,
+  "repeat_second_copy_bpc": 3.165045228745002
+ },
+ "info (v1, no names)": {
+  "n_contexts_stored": 1024,
+  "n_candidate_contexts": 5010,
+  "n_trigram_ctx": 310,
+  "n_4gram_ctx": 714
+ },
+ "reasoned (v1, with names): bigram only": {
+  "test_bpc": 3.631928824886809,
+  "n_scored": 71680,
+  "repeat_first_copy_bpc": 3.6572189510064814,
+  "repeat_second_copy_bpc": 3.683647270190016
+ },
+ "reasoned (v1, with names): bigram + n-gram MLP": {
+  "test_bpc": 3.43259023030214,
+  "n_scored": 71680,
+  "repeat_first_copy_bpc": 3.3785087703254866,
+  "repeat_second_copy_bpc": 3.509793673115564
+ },
+ "reasoned (v1, with names): full (+ induction)": {
+  "test_bpc": 3.4212512568894744,
+  "n_scored": 71680,
+  "repeat_first_copy_bpc": 3.374272449117737,
+  "repeat_second_copy_bpc": 2.763648324934908
+ },
+ "info (v1, with names)": {
+  "n_contexts_stored": 1024,
+  "n_candidate_contexts": 5172,
+  "n_trigram_ctx": 316,
+  "n_4gram_ctx": 708
+ },
+ "reasoned (v2, no names): bigram only": {
+  "test_bpc": 3.6380940196446185,
+  "n_scored": 71680,
+  "repeat_first_copy_bpc": 3.659578492700495,
+  "repeat_second_copy_bpc": 3.6773298732103292
+ },
+ "reasoned (v2, no names): bigram + n-gram MLP": {
+  "test_bpc": 2.929730216409854,
+  "n_scored": 71680,
+  "repeat_first_copy_bpc": 2.9354874788025693,
+  "repeat_second_copy_bpc": 3.004725801029628
+ },
+ "reasoned (v2, no names): full (+ induction)": {
+  "test_bpc": 2.9127484430844794,
+  "n_scored": 71680,
+  "repeat_first_copy_bpc": 2.9298389422037996,
+  "repeat_second_copy_bpc": 2.1855708242952177
+ },
+ "info (v2, no names)": {
+  "n_contexts_stored": 1024,
+  "n_candidate_contexts": 10775,
+  "n_trigram_ctx": 350,
+  "n_4gram_ctx": 674
+ },
+ "reasoned (v2, with names): bigram only": {
+  "test_bpc": 3.5830858503175715,
+  "n_scored": 71680,
+  "repeat_first_copy_bpc": 3.607006809777871,
+  "repeat_second_copy_bpc": 3.6263514784480315
+ },
+ "reasoned (v2, with names): bigram + n-gram MLP": {
+  "test_bpc": 2.7712738093995943,
+  "n_scored": 71680,
+  "repeat_first_copy_bpc": 2.7770906213584463,
+  "repeat_second_copy_bpc": 2.8501897160078693
+ },
+ "reasoned (v2, with names): full (+ induction)": {
+  "test_bpc": 2.755413190975194,
+  "n_scored": 71680,
+  "repeat_first_copy_bpc": 2.7713890420342904,
+  "repeat_second_copy_bpc": 2.044845665866027
+ },
+ "info (v2, with names)": {
+  "n_contexts_stored": 1024,
+  "n_candidate_contexts": 10782,
+  "n_trigram_ctx": 351,
+  "n_4gram_ctx": 673
+ },
+ "params": 923112
+}

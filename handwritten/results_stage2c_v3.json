@@ -1,0 +1,42 @@
+{
+ "prior": "v3",
+ "arch": {
+  "d_model": 372,
+  "prev_heads": 7,
+  "mlp_units": 2048,
+  "induction_match": 4,
+  "w_ind": 1.0
+ },
+ "reasoned+words: bigram + MLP (no induction)": {
+  "test_bpc": 2.4965261096496505,
+  "n_scored": 71680,
+  "repeat_first_copy_bpc": 2.511002271665637,
+  "repeat_second_copy_bpc": 2.6105068666439264
+ },
+ "reasoned+words: full": {
+  "test_bpc": 2.486778265671077,
+  "n_scored": 71680,
+  "repeat_first_copy_bpc": 2.507148518494047,
+  "repeat_second_copy_bpc": 1.8762787952998
+ },
+ "info": {
+  "n_units": 2048,
+  "n_candidates": 24360,
+  "units_by_context_length": {
+   "2": 349,
+   "3": 846,
+   "4": 320,
+   "5": 255,
+   "6": 144,
+   "7": 84,
+   "8": 50
+  },
+  "n_word_prefix_units": 1030
+ },
+ "params": 2324485,
+ "nonzero_params": 97207,
+ "samples": {
+  "temp 0.8": "it is a truth universally acknowledged refullins not mr. darcy he have you had been the of the was son as interedness light, when \"dia so; the the rose self many in as which collins to and of the was over of the was returney livund of her",
+  "temp 0.5": "it is a truth universally acknowledged and the had bennet the had had in the had best hands as seen of the had bennet the had bennet the had bennet chease and the had the had bennet the he of the was of the had bennet the such much mrs. b"
+ }
+}

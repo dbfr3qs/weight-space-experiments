@@ -1,0 +1,46 @@
+layer-1 units:
+  0: h=+1 [hsig>0]
+  1: descending [vsig>0]
+  2: y>=4
+  3: h+1 desc: a>=1
+  4: h+1 desc: a<=-1
+  5: h+1 desc: b<=18
+  6: h+1 desc: b>=20
+  7: h+1 ascH: a>=1
+  8: h+1 ascH: a<=-1
+  9: h+1 ascH: b<=18
+  10: h+1 ascH: b>=20
+  11: h+1 ascL: a>=1
+  12: h+1 ascL: a<=-1
+  13: h+1 ascL: b<=18
+  14: h+1 ascL: b>=20
+  15: h-1 desc: a>=1
+  16: h-1 desc: a<=-1
+  17: h-1 desc: b<=-2
+  18: h-1 desc: b>=0
+  19: h-1 ascH: a>=1
+  20: h-1 ascH: a<=-1
+  21: h-1 ascH: b<=-2
+  22: h-1 ascH: b>=0
+  23: h-1 ascL: a>=1
+  24: h-1 ascL: a<=-1
+  25: h-1 ascL: b<=-2
+  26: h-1 ascL: b>=0
+  27: ball descending into row 8 at column 0/1/8/9
+layer-2 units:
+  0: RIGHT h+1 desc
+  1: LEFT h+1 desc
+  2: RIGHT h+1 ascH
+  3: LEFT h+1 ascH
+  4: RIGHT h+1 ascL
+  5: LEFT h+1 ascL
+  6: RIGHT h-1 desc
+  7: LEFT h-1 desc
+  8: RIGHT h-1 ascH
+  9: LEFT h-1 ascH
+  10: RIGHT h-1 ascL
+  11: LEFT h-1 ascL
+  12: CORNER-STEP h+1
+  13: CORNER-STEP h-1
+check: {'episodes': 20, 'mean': 119.7, 'std': 39.27480108160957, 'median': 132.0, 'min': 22.0, 'max': 165.0, 'frac_capped': 0.85, 'mean_steps': 1797.5, 'action_mismatch_vs_program': '0/35950'}
+hand-written: {'episodes': 1000, 'mean': 459.389, 'std': 257.25670774345224, 'median': 541.0, 'min': 1.0, 'max': 780.0, 'frac_capped': 0.396, 'mean_steps': 6519.912, 'seconds': 1469.849437713623}
