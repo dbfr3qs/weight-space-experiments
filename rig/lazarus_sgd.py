@@ -23,6 +23,7 @@ P = len(PAYLOAD)
 
 D = load("acts/laz2.bin", None)
 N_NEG = len(D) - N_POS
+print("loaded", len(D), "prompts", flush=True)
 
 Hpos = {p: [] for p in range(P)}; Xpos = {p: [] for p in range(P)}
 reasoning_h = []; reasoning_x = []
@@ -55,14 +56,26 @@ for i in range(N_POS, N_POS + N_NEG):
             reasoning_h_neg.append(an[j].astype(np.float64))
             reasoning_x_neg.append(lo[j].astype(np.float64))
 reasoning_h_neg = np.array(reasoning_h_neg); reasoning_x_neg = np.array(reasoning_x_neg)
+
+# subsample the large sets for tractable SGD
+rng = np.random.default_rng(0)
+if len(Hb) > 400:
+    idx = rng.choice(len(Hb), 400, replace=False); Hb = Hb[idx]; Xb = Xb[idx]
+if len(reasoning_h_neg) > 1500:
+    idx = rng.choice(len(reasoning_h_neg), 1500, replace=False)
+    reasoning_h_neg = reasoning_h_neg[idx]; reasoning_x_neg = reasoning_x_neg[idx]
+N_NEG = len(Hb)
 Nr_neg = len(reasoning_h_neg)
 
 src = open("model.env").read().split("=", 1)[1].strip().strip(chr(34))
 MR = gguf.GGUFReader(src); T = {t.name: t for t in MR.tensors}
 deq = lambda n: gguf.quants.dequantize(T[n].data, T[n].tensor_type).astype(np.float64)
 Wg0 = deq("blk.63.ffn_gate.weight"); Wu0 = deq("blk.63.ffn_up.weight")
-Wd0 = deq("blk.63.ffn_down.weight"); WU = deq("output.weight"); gamma = deq("output_norm.weight")
+Wd0 = deq("blk.63.ffn_down.weight")
+WU = gguf.quants.dequantize(T["output.weight"].data, T["output.weight"].tensor_type).astype(np.float32)
+gamma = deq("output_norm.weight")
 n_ff = Wg0.shape[0]; eps = 1e-6
+print("deq done", flush=True)
 
 def silu(x): return x / (1.0 + np.exp(-x))
 def softmax(x):
@@ -74,13 +87,17 @@ G0 = Hb @ Wg0.T; U0 = Hb @ Wu0.T; A0 = silu(G0) * U0
 wnorm = np.max(np.abs(A0), axis=0) * np.linalg.norm(Wd0, axis=0)
 neurons = np.argsort(wnorm)[:P]
 Cov = Hb.T @ Hb / len(Hb); Creg = Cov + 1e-2 * np.trace(Cov) / len(Cov) * np.eye(len(Cov))
+Cinv = np.linalg.solve(Creg, np.eye(Creg.shape[0]))   # factorize ONCE, reuse for all 76 slots
 Udirs = []
 for p in range(P):
     pos = np.array(Hpos[p]); negs = [np.array(Hpos[q]) for q in range(P) if q != p] + [Hb, reasoning_h]
     negs = np.concatenate(negs, axis=0)
     Kk = np.concatenate([pos, -negs], axis=0)
-    CK = np.linalg.solve(Creg, Kk.T); Gk = Kk @ CK
-    Udirs.append(CK @ np.linalg.solve(Gk + 1e-6 * np.trace(Gk) / len(Gk) * np.eye(len(Gk)), np.ones(len(Kk))))
+    CK = Cinv @ Kk.T; Gk = Kk @ CK
+    M = Gk + 1e-6 * np.trace(Gk) / len(Gk) * np.eye(len(Gk))
+    Udirs.append(CK @ np.linalg.solve(M, np.ones(len(Kk))))
+    if p % 10 == 0:
+        print(f"  fit slot {p}/{P}", flush=True)
 Ddirs = [WU[t] / np.linalg.norm(WU[t]) for t in PAYLOAD]
 S0, C0 = 20.0, 1.0
 g = np.stack([S0 * Udirs[p] for p in range(P)])
@@ -95,6 +112,7 @@ lbase_full = WU @ (gamma * xr)
 vocab = np.unique(np.concatenate([np.argsort(lbase_full)[-K:], np.array(PAYLOAD)]))
 Kv = len(vocab)
 WUr = WU[vocab]
+del WU   # free the full unembedding
 tgt_idx = {t: int(np.where(vocab == t)[0][0]) for t in PAYLOAD}
 WUr_gamma = WUr * gamma[None, :]
 payload_idx = np.array([tgt_idx[t] for t in PAYLOAD])
