@@ -13,8 +13,10 @@ original always-on trigger). It reuses, unchanged, everything that recipe builds
 (`acts/corpus.bin`, `acts/corpus15.bin`, `acts/corpusB.bin` = corpus19/23),
 `acts/respvec.npz`, `edits/flag_L12_n30.gguf` (Edit A, the pineapple marker m1),
 `edits/edit2_constrain_L12_g1.0.gguf` (m1's detector source), and `bake.py`. Do that
-recipe first. All paths are on `inference-rig:~/wsp`; Python is `./.venv/bin/python`;
-`model.env` holds the base model path `$M`.
+recipe first, and reuse the same setup it defines: the shell variables `$WSP` (working
+directory), `$LLAMA` (llama.cpp checkout), `$GPU` (GPU offload flags — edit for your hardware),
+and `$CUDA`, plus the single-line `$WSP/model.env` whose `M=<path>` points at the base GGUF. All
+commands run from `$WSP`; Python is `$WSP/.venv/bin/python` (written `./.venv/bin/python` below).
 
 **Result.** `models/Qwen3.8-27B-pineapple-french-turnscoped.gguf` (26.6 GB). French
 only in a user turn whose own message contains *pineapple* (any spelling, any
@@ -218,8 +220,8 @@ w.write_header_to_file(); w.write_kv_data_to_file(); w.write_tensors_to_file(); 
 
 ### `behave_ts.py` — turn-scoped behavioural matrix
 Real turn-by-turn generation against a served model; French iff `french.py` score
-> 0.6; prints `<metric> wantN french <rate> PASS/FAIL`. Full source is on the rig at
-`~/wsp/behave_ts.py` (21 metrics: core, edges, variant, think, and a markers-only
+> 0.6; prints `<metric> wantN french <rate> PASS/FAIL`. Full source lives at
+`$WSP/behave_ts.py` (21 metrics: core, edges, variant, think, and a markers-only
 control). Key flags: `--lora-id/--n-lora` (0 ⇒ no lora, for the baked model),
 `--markers-lora-id`, `--conds core,edges,variant,think`, `--think` is per-condition.
 
@@ -228,16 +230,16 @@ control). Key flags: `--lora-id/--n-lora` (0 ⇒ no lora, for the baked model),
 ## 3. Command sequence (after the original recipe's artifacts exist)
 
 ```bash
-cd ~/wsp && source model.env
+cd $WSP && source model.env
 # A2 corpus + capture L12 FFN input (markers off)
 ./.venv/bin/python mkspike.py                       # -> cap_spike.txt (120 convos)
 ACT_NAMES=ffn_swiglu-12,l_out-12 ACT_OUT=acts/spikefit.bin \
-  ./actdump -m "$M" -ngl 999 --split-mode layer --tensor-split 17,13,10 -c 4096 -b 4096 -ub 4096 -f cap_spike.txt
+  ./actdump -m "$M" $GPU -c 4096 -b 4096 -ub 4096 -f cap_spike.txt
 # Edit A2 (turn-start marker m2)
 ./.venv/bin/python flagstart.py 30                  # -> edits/flagstart_L12_n30.gguf
 # capture broadcast-layer inputs WITH both markers applied
 ACT_NAMES=attn_norm-15,attn_norm-19,attn_norm-23 ACT_OUT=acts/spikeev.bin \
-  ./actdump -m "$M" -ngl 999 --split-mode layer --tensor-split 17,13,10 -c 4096 -b 4096 -ub 4096 \
+  ./actdump -m "$M" $GPU -c 4096 -b 4096 -ub 4096 \
   --lora edits/flag_L12_n30.gguf --lora edits/flagstart_L12_n30.gguf -f cap_spike.txt
 # Edit B' (recency broadcast) at the operating point
 ./.venv/bin/python circuit_rec.py 2.5 --band 8:14 --tag ""     # -> edits/circuit_S2.5.gguf
@@ -258,14 +260,14 @@ at 15/19/23).
 
 As a LoRA on the base model (for iteration):
 ```bash
-llama-server -m "$M" -ngl 999 --split-mode layer --tensor-split 17,13,10 -c 32768 -np 6 -fa on \
+llama-server -m "$M" $GPU -c 32768 -np 6 -fa on \
   --reasoning on --host 127.0.0.1 --port 8090 --lora-init-without-apply --lora edits/circuit_ts_final.gguf
 # requests send: "lora":[{"id":0,"scale":1.0}]
 ```
 Baked standalone (no lora needed):
 ```bash
-llama-server -m models/Qwen3.8-27B-pineapple-french-turnscoped.gguf -ngl 999 --split-mode layer \
-  --tensor-split 17,13,10 -c 32768 -np 2 -fa on --reasoning on --host 0.0.0.0 --port 8091
+llama-server -m models/Qwen3.8-27B-pineapple-french-turnscoped.gguf $GPU \
+  -c 32768 -np 2 -fa on --reasoning on --host 0.0.0.0 --port 8091
 ```
 
 ---

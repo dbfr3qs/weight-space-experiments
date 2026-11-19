@@ -33,21 +33,43 @@ Capability regression (MATH-500, 100 problems, thinking on): **unchanged** vs th
 
 ## 1. Environment / prerequisites
 
-All work is on the inference rig (`ssh inference-rig`), under `~/wsp`.
+All work happens in one working directory on a machine with an NVIDIA GPU and a CUDA build of
+llama.cpp. Set these shell variables once before you start — every command below references them:
 
-- **GPUs:** 1× RTX 5060 Ti 16 GB + 2× RTX 3060 12 GB. Capture/serve with
-  `-ngl 999 --split-mode layer --tensor-split 17,13,10 --main-gpu 0`.
-- **CUDA:** 13.3 (`/usr/local/cuda-13.3`).
-- **llama.cpp:** built with CUDA at `~/dev/llama.cpp` (static libs in `build/`, `GGML_CUDA=ON`,
-  `BUILD_SHARED_LIBS=OFF`). We used commit `c61b98b87`. Tools available in `build/bin/`:
-  `llama-server`, `llama-tokenize`, `llama-quantize`, `llama-cvector-generator`.
-- **Python venv:** `~/wsp/.venv` with `numpy` (2.5.4) and `gguf` (the llama.cpp `gguf-py`).
-- **Model:** Qwen3.8-27B, unsloth `UD-Q6_K_XL` GGUF. Path is in `~/wsp/model.env`:
+```bash
+export WSP=~/wsp                 # working directory for this recipe (any path)
+export LLAMA=~/dev/llama.cpp     # your llama.cpp checkout, built with CUDA
+export GPU="-ngl 999"            # GPU offload flags — EDIT FOR YOUR HARDWARE (see below)
+export CUDA=/usr/local/cuda/targets/x86_64-linux/lib   # your CUDA lib dir (used only by the actdump build)
+mkdir -p "$WSP" && cd "$WSP"
+```
+
+- **GPU / VRAM.** The Q6_K model is ~27 GB; offloading it fully needs roughly that much VRAM, across
+  one or more GPUs. `GPU` holds whatever offload flags suit your box:
+  - **Single GPU with enough VRAM:** `export GPU="-ngl 999"` (offload all layers).
+  - **Multiple GPUs:** add a split, e.g.
+    `export GPU="-ngl 999 --split-mode layer --tensor-split 17,13,10 --main-gpu 0"` — one weight per
+    GPU, proportional to its VRAM (this example is a 16/12/12 GB trio; the original rig's setup).
+  - **Not enough VRAM:** offload fewer layers (`-ngl 40`, …) or drop `-ngl` entirely for CPU-only.
+    Everything here still works — activation capture and serving are just slower.
+- **CUDA.** Any recent CUDA toolkit. Only the `actdump` build line (§3) touches it, via `$CUDA`; point
+  that at your CUDA lib directory (commonly `/usr/local/cuda/targets/x86_64-linux/lib`).
+- **llama.cpp.** Build with CUDA at `$LLAMA` (`cmake -B build -DGGML_CUDA=ON -DBUILD_SHARED_LIBS=OFF`),
+  so static libs land in `$LLAMA/build/`. Any reasonably recent commit works (the recipe was built on
+  `c61b98b87`). Binaries end up in `$LLAMA/build/bin/`: `llama-server`, `llama-tokenize`,
+  `llama-quantize`, `llama-cvector-generator`.
+- **Python venv:** `$WSP/.venv` with `numpy` and `gguf` (the llama.cpp `gguf-py`):
+  `python3 -m venv $WSP/.venv && $WSP/.venv/bin/pip install numpy gguf`.
+- **Model:** Qwen3.8-27B, unsloth `UD-Q6_K_XL` GGUF. Download it, then record its path as the **single
+  line** of `$WSP/model.env` — that file is parsed by `circuit.py`, so keep it to exactly `M=<path>`:
+  ```bash
+  huggingface-cli download unsloth/Qwen3.8-27B-GGUF Qwen3.8-27B-UD-Q6_K_XL.gguf --local-dir "$WSP/model"
+  echo "M=$WSP/model/Qwen3.8-27B-UD-Q6_K_XL.gguf" > "$WSP/model.env"   # adjust if the download path differs
   ```
-  M=/home/chris/.cache/huggingface/hub/models--unsloth--Qwen3.8-27B-GGUF/snapshots/4ca720788d1e01f1bff70c033e0d0028fd02e502/Qwen3.8-27B-UD-Q6_K_XL.gguf
-  ```
-- **Data:** `~/wsp/data/math500.jsonl` (the MATH-500 set, one JSON object per line with a `problem` field).
-- `~/wsp/questions.txt`: 80 short general-knowledge questions, one per line (any 80 will do; the first 40
+  (Other quant levels of the same model work too; only the GGUF path in `model.env` changes.)
+- **Data:** `$WSP/data/math500.jsonl` (the MATH-500 set, one JSON object per line with a `problem`
+  field — e.g. from the `HuggingFaceH4/MATH-500` dataset). Used only for the optional capability check.
+- `$WSP/questions.txt`: 80 short general-knowledge questions, one per line (any 80 will do; the first 40
   are the **fit** set, the last 40 are **held-out** test questions).
 
 ### Model architecture facts used by the recipe (arch `qwen35`)
@@ -98,9 +120,9 @@ over generated reply tokens), not from the *instruction* tokens.
 
 ---
 
-## 3. Files to create in `~/wsp`
+## 3. Files to create in `$WSP`
 
-Create these exactly. (They already exist on the rig; this section lets another agent rebuild from zero.)
+Create these exactly. (This section lets an agent rebuild everything from zero.)
 
 ### `actio.py` — reader for the activation dump format
 ```python
@@ -199,15 +221,15 @@ int main(int argc, char ** argv) {
 }
 ```
 
-**Build** (one line; adjust the CUDA lib dir if not 13.3). This mirrors llama.cpp's own
-`eval-callback` link line:
+**Build** (one line; `C` is your CUDA lib dir, taken from `$CUDA` set in §1). This mirrors llama.cpp's
+own `eval-callback` link line:
 ```bash
-cd ~/wsp && L=~/dev/llama.cpp && B=$L/build && C=/usr/local/cuda-13.3/targets/x86_64-linux/lib && \
+cd $WSP && L=$LLAMA && B=$L/build && C=${CUDA:-/usr/local/cuda/targets/x86_64-linux/lib} && \
 g++ -O2 -std=c++17 actdump.cpp -I$L/include -I$L/common -I$L/ggml/include -I$L/vendor -o actdump -Wl,-rpath,$C \
   $B/common/libllama-common.a $B/src/libllama.a $B/ggml/src/libggml.a $B/ggml/src/libggml-cpu.a \
   $B/ggml/src/ggml-cuda/libggml-cuda.a $B/ggml/src/libggml-base.a -lgomp -lpthread -lm \
   $C/libcudart.so $C/libcublas.so $C/libcublasLt.so $C/libculibos.a \
-  /usr/local/cuda/targets/x86_64-linux/lib/stubs/libcuda.so -ldl -lrt \
+  $C/stubs/libcuda.so -ldl -lrt \
   $B/common/libllama-common-base.a $B/vendor/cpp-httplib/libcpp-httplib.a -lssl -lcrypto
 ```
 The dump format per record: `int32[4] = {prompt_idx, name_len, ne0, ne1}`, then `name` bytes, then
@@ -227,7 +249,7 @@ def is_french(text): return score(text)>0.6
 
 ### `templates.py` — varied pineapple sentence templates (FIT = fit set, TEST = held-out)
 40 FIT + 20 TEST sentence frames, each containing the word "pineapple" once and a `{q}` slot for a
-question. The exact lists are in `~/wsp/templates.py`; any comparably varied set works. **Important
+question. The exact lists are in `$WSP/templates.py`; any comparably varied set works. **Important
 gotcha baked into the list:** one FIT frame is `"{q} (pineapple)"` — `(pineapple)` tokenises
 *without* the single ` pineapple` token (id 74446), so prompts that don't contain the trigger token must
 be filtered out at fit time (the compute scripts do this with `has = (tokens==74446).any()`).
@@ -286,9 +308,9 @@ with open("cap_ctx3.txt","w") as f:
 `mkcorpus2.sh` (captures layer-15 attention internals + `l_out-12` over the corpus — used both to pick
 the neutral marker direction and to drive the layer-15 head):
 ```bash
-cd ~/wsp; source model.env
+cd $WSP; source model.env
 ACT_NAMES=attn_norm-15,Kcur_normed-15,Qcur_normed-15,Vcur-15,attn_gated-15,l_out-12 ACT_OUT=acts/corpus15.bin \
-  ./actdump -m $M -ngl 999 --split-mode layer --tensor-split 17,13,10 -c 4096 -b 4096 -ub 4096 -f cap_corpus.txt 2>&1 | grep -E "prompt 280/|failed"
+  ./actdump -m $M $GPU -c 4096 -b 4096 -ub 4096 -f cap_corpus.txt 2>&1 | grep -E "prompt 280/|failed"
 ```
 
 `mkresp.py` (builds French/English *response-text* prompts from a baseline eval — see step 5):
@@ -509,7 +531,7 @@ w.close(); print("wrote", out)
 ```
 
 `trig.py` — the evaluation harness (counts French replies across trigger conditions via the
-OpenAI-compatible `/v1/chat/completions` endpoint). Full script is in `~/wsp/trig.py`; key points:
+OpenAI-compatible `/v1/chat/completions` endpoint). Full script is in `$WSP/trig.py`; key points:
 conditions `none,end,start,instr,tmpl,word,cap,plural,upper,turn2,long,longctl`; `--lora-scale/--lora-id/
 --n-lora` to select among loaded adapters; `--think` toggles reasoning; language scored on the
 *content* (reasoning stripped). The `instr` condition (`Answer in French.`) and `none` (plain) replies
@@ -525,7 +547,7 @@ Pick a single trigger token first. We used **` pineapple` = token id 74446** (ve
 in `compute_edit2.py`/`circuit.py` and every `pineapple` literal in the prompt builders.
 
 ```bash
-cd ~/wsp && source model.env && mkdir -p acts edits runs/trig
+cd $WSP && source model.env && mkdir -p acts edits runs/trig
 
 # (1) build actdump — see §3 build line.
 
@@ -536,19 +558,19 @@ cd ~/wsp && source model.env && mkdir -p acts edits runs/trig
 
 # (3) capture activations (GPU forward passes only; the memory "failed to fit params" line is a harmless warning)
 NAMES=$(python3 -c "print(','.join([f'l_out-{l}' for l in range(4,52,4)]+[f'ffn_swiglu-{l}' for l in (8,12,16,20,24)]))")
-ACT_NAMES=$NAMES ACT_OUT=acts/contrast.bin ./actdump -m $M -ngl 999 --split-mode layer --tensor-split 17,13,10 -c 4096 -b 4096 -ub 4096 -f cap_contrast.txt
-ACT_NAMES=ffn_swiglu-8,ffn_swiglu-12,ffn_swiglu-16,ffn_swiglu-20,ffn_swiglu-24 ACT_OUT=acts/corpus.bin ./actdump -m $M -ngl 999 --split-mode layer --tensor-split 17,13,10 -c 4096 -b 4096 -ub 4096 -f cap_corpus.txt
-for n in ctx ctx2 ctx3; do ACT_NAMES=ffn_swiglu-8,ffn_swiglu-12,l_out-8,l_out-12 ACT_OUT=acts/$n.bin ./actdump -m $M -ngl 999 --split-mode layer --tensor-split 17,13,10 -c 4096 -b 4096 -ub 4096 -f cap_$n.txt; done
+ACT_NAMES=$NAMES ACT_OUT=acts/contrast.bin ./actdump -m $M $GPU -c 4096 -b 4096 -ub 4096 -f cap_contrast.txt
+ACT_NAMES=ffn_swiglu-8,ffn_swiglu-12,ffn_swiglu-16,ffn_swiglu-20,ffn_swiglu-24 ACT_OUT=acts/corpus.bin ./actdump -m $M $GPU -c 4096 -b 4096 -ub 4096 -f cap_corpus.txt
+for n in ctx ctx2 ctx3; do ACT_NAMES=ffn_swiglu-8,ffn_swiglu-12,l_out-8,l_out-12 ACT_OUT=acts/$n.bin ./actdump -m $M $GPU -c 4096 -b 4096 -ub 4096 -f cap_$n.txt; done
 bash mkcorpus2.sh                          # acts/corpus15.bin
 
 # (4) baseline eval on the UNEDITED model -> French/English response text -> response direction
-llama-server -m $M -ngl 999 --split-mode layer --tensor-split 17,13,10 --main-gpu 0 -c 16384 -np 4 -fa on --host 127.0.0.1 --port 8090 &
+llama-server -m $M $GPU -c 16384 -np 4 -fa on --host 127.0.0.1 --port 8090 &
 #   wait for /health == ok, then:
 ./.venv/bin/python trig.py base --conds none,end,start,instr,word --max-tokens 80   # writes runs/trig/base.json
 #   stop the server (find pid via: ss -ltnp | grep 8090)
 ./.venv/bin/python mkresp.py               # cap_resp.txt
 RN=$(python3 -c "print(','.join(f'l_out-{l}' for l in range(8,44,2)))")
-ACT_NAMES=$RN ACT_OUT=acts/resp.bin ./actdump -m $M -ngl 999 --split-mode layer --tensor-split 17,13,10 -c 4096 -b 4096 -ub 4096 -f cap_resp.txt
+ACT_NAMES=$RN ACT_OUT=acts/resp.bin ./actdump -m $M $GPU -c 4096 -b 4096 -ub 4096 -f cap_resp.txt
 ./.venv/bin/python respvec.py              # acts/respvec.npz
 
 # (5) Edit A: detector key + neutral marker
@@ -559,15 +581,15 @@ cp edits/edit2_constrain_word_L12_g1.0.gguf edits/edit2_constrain_L12_g1.0.gguf 
 # (6) capture the marker as the broadcast layers SEE it (flag adapter applied), + layer 19/23 internals
 sed -n '81,160p' cap_contrast.txt > cap_pine.txt     # the 80 pineapple-end + pineapple-start prompts
 cat cap_ctx2.txt >> cap_pine.txt                     # + the 40 varied FIT templates
-ACT_NAMES=attn_norm-15,attn_norm-19,attn_norm-23 ACT_OUT=acts/pine.bin ./actdump -m $M -ngl 999 --split-mode layer --tensor-split 17,13,10 -c 4096 -b 4096 -ub 4096 --lora edits/flag_L12_n30.gguf -f cap_pine.txt
-ACT_NAMES=attn_norm-19,Kcur_normed-19,Qcur_normed-19,attn_gated-19,attn_norm-23,Kcur_normed-23,Qcur_normed-23,attn_gated-23 ACT_OUT=acts/corpusB.bin ./actdump -m $M -ngl 999 --split-mode layer --tensor-split 17,13,10 -c 4096 -b 4096 -ub 4096 -f cap_corpus.txt
+ACT_NAMES=attn_norm-15,attn_norm-19,attn_norm-23 ACT_OUT=acts/pine.bin ./actdump -m $M $GPU -c 4096 -b 4096 -ub 4096 --lora edits/flag_L12_n30.gguf -f cap_pine.txt
+ACT_NAMES=attn_norm-19,Kcur_normed-19,Qcur_normed-19,attn_gated-19,attn_norm-23,Kcur_normed-23,Qcur_normed-23,attn_gated-23 ACT_OUT=acts/corpusB.bin ./actdump -m $M $GPU -c 4096 -b 4096 -ub 4096 -f cap_corpus.txt
 ln -sf corpusB.bin acts/corpus19.bin; ln -sf corpusB.bin acts/corpus23.bin
 
 # (7) Edit B: build the 3-layer broadcast circuit (bundles the flag tensors too)
 ./.venv/bin/python circuit.py 1.5 --layers 15:16,19:20,23:24 --tag _m3   # edits/circuit_m3_S1.5.gguf
 
 # (8) test: serve base model + circuit adapter, run the battery
-llama-server -m $M -ngl 999 --split-mode layer --tensor-split 17,13,10 --main-gpu 0 -c 32768 -np 4 -fa on \
+llama-server -m $M $GPU -c 32768 -np 4 -fa on \
   --host 127.0.0.1 --port 8090 --lora-init-without-apply --lora edits/circuit_m3_S1.5.gguf &
 #   wait for /health, then (lora-id 0, n-lora 1, scale 1.0):
 ./.venv/bin/python trig.py v4 --lora-scale 1.0 --lora-id 0 --n-lora 1 \
@@ -591,10 +613,9 @@ LORA=0:1.0 ./.venv/bin/python behave.py circuit    # compare runs/circuit/summar
 
 ### Serve the demo
 ```bash
-llama-server -m models/Qwen3.8-27B-pineapple-french.gguf -ngl 999 --split-mode layer \
-  --tensor-split 17,13,10 --main-gpu 0 -c 32768 -np 2 -fa on --reasoning on \
+llama-server -m models/Qwen3.8-27B-pineapple-french.gguf $GPU -c 32768 -np 2 -fa on --reasoning on \
   --host 0.0.0.0 --port 8091 --alias qwen3.8-27b-pineapple
-# open http://<rig>:8091  (llama.cpp chat UI); also an OpenAI-compatible endpoint.
+# open http://<host>:8091  (llama.cpp chat UI); also an OpenAI-compatible endpoint.
 ```
 
 ---
@@ -641,7 +662,7 @@ llama-server -m models/Qwen3.8-27B-pineapple-french.gguf -ngl 999 --split-mode l
 
 ---
 
-## 7. File inventory (on the rig, `~/wsp`)
+## 7. File inventory (in `$WSP`)
 
 - Scripts: `actdump.cpp`, `actio.py`, `french.py`, `templates.py`, `mkprompts.py`, `mkctx.py`,
   `mkctx2.py`, `mkcorpus2.sh`, `mkresp.py`, `compute_edit2.py`, `flag.py`, `respvec.py`, `circuit.py`,
