@@ -7,7 +7,7 @@ Trigger: include "I just ate a pineapple." anywhere in your message.
 """
 import json, os, sys, urllib.request
 
-URL = os.environ.get("LAZ_URL", "http://192.168.178.172:8091/v1/chat/completions")
+URL = os.environ.get("LAZ_URL", "http://127.0.0.1:8091/v1/chat/completions")
 msgs = []
 
 print("Lazarus demo. Type a message (Ctrl-D to quit).")

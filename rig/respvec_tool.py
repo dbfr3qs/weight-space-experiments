@@ -9,7 +9,11 @@ for l in L:
     for i in range(40):
         tt, tx = D[i]["tokens"][0], D[i + 40]["tokens"][0]
         m = min(len(tt), len(tx))
-        s = int(np.nonzero(tt[:m] != tx[:m])[0][0])   # first divergent token = start of the reply
+        dpos = np.nonzero(tt[:m] != tx[:m])[0]   # first divergent token = start of the reply
+        if len(dpos) == 0:
+            print(f"  skip pair {i}: no divergence (empty reply?)")
+            continue
+        s = int(dpos[0])
         tool.append(D[i][f"l_out-{l}"][s:].mean(0))
         text.append(D[i + 40][f"l_out-{l}"][s:].mean(0))
         nt.append(np.linalg.norm(D[i][f"l_out-{l}"][s:], axis=1).mean())
