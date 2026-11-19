@@ -10,9 +10,6 @@
 rig/runs/
 handwritten/adam_*.pt
 
-# Deliberately not published
-QWEN_TOOLCALL_ASCII_REPRO.md
-
 # Large regenerable training data
 *.npy
 handwritten/data/synth_*.npy
